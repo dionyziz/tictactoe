@@ -1,0 +1,384 @@
+<!DOCTYPE HTML>
+<html>
+    <head>
+        <title>Tic-tac-toe</title>
+        <style>
+            body {
+                font-family: "Lucida Sans", "Trebuchet MS", Verdana, sans-serif;
+                text-align: center;
+            }
+            canvas {
+                margin: auto;
+                display: none;
+            }
+            h1 {
+                display: none;
+            }
+            div {
+                color: #999;
+            }
+            a {
+                color: #48a;
+                text-decoration: none;
+            }
+            a:hover {
+                text-decoration: underline;
+            }
+            div {
+                margin: 15px;
+            }
+            img {
+                border: 0;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Tic-tac-toe</h1>
+        <a href="http://github.com/dionyziz/tictactoe"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://a248.e.akamai.net/assets.github.com/img/7afbc8b248c68eb468279e8c17986ad46549fb71/687474703a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f6461726b626c75655f3132313632312e706e67" alt="Fork me on GitHub"></a>
+        <h2 id='out'>Hello. Let's play a game.</h2>
+        <noscript>Why don't you <a href='http://support.google.com/bin/answer.py?hl=en&amp;answer=23852'>Enable Javascript</a> to have some fun?</noscript>
+        <canvas id='canvas' width='600' height='600'></canvas>
+        <div>Tic-tac-toe by <a href='http://twitter.com/dionyziz'>dionyziz</a>. Inspired by Stanford's <a href='http://ai-class.org'>ai-class</a>.</div>
+        <div><a href='http://soe.stanford.edu/'><img src='http://soe.stanford.edu/images/logo.gif' alt='Stanford Engineering' /></a></div>
+        <script src='jquery-1.7.1.min.js'></script>
+        <script>
+            /*
+            A tic-tac-toe AI system using the min-max algorithm.
+
+            Copyright (C) 2011 by Dionysis Zindros <dionyziz@gmail.com>
+
+            Permission is hereby granted, free of charge, to any person obtaining a copy
+            of this software and associated documentation files (the "Software"), to deal
+            in the Software without restriction, including without limitation the rights
+            to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+            copies of the Software, and to permit persons to whom the Software is
+            furnished to do so, subject to the following conditions:
+
+            The above copyright notice and this permission notice shall be included in
+            all copies or substantial portions of the Software.
+
+            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+            IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+            FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+            AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+            LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+            OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+            THE SOFTWARE.
+            */
+            var board = [
+                [ 0, 0, 0 ],
+                [ 0, 0, 0 ],
+                [ 0, 0, 0 ]
+            ];
+            var player = 1, computer = -1;
+            var turn = 0;
+            var W = 600, H = 600;
+            var CELL_W = W / 3, CELL_H = H / 3;
+            var CELL_MARGIN_W = CELL_W / 10, CELL_MARGIN_H = CELL_H / 10;
+            var canvas = document.getElementById( 'canvas' );
+            var ctx = canvas.getContext( '2d' );
+            var out = document.getElementById( 'out' );
+
+            canvas.onclick = function( e ) {
+                var position = hitTest( document.body.scrollLeft + e.clientX - canvas.offsetLeft, document.body.scrollTop + e.clientY - canvas.offsetTop );
+                if ( position[ 0 ] < 0 || position[ 1 ] < 0
+                  || position[ 0 ] >= 3 || position[ 1 ] >= 3 ) {
+                    return false;
+                }
+                if ( turn == player ) {
+                    if ( board[ position[ 1 ] ][ position[ 0 ] ] == 0 ) {
+                        board[ position[ 1 ] ][ position[ 0 ] ] = player;
+                        turn = computer;
+                        render();
+                        play();
+                    }
+                }
+            };
+            function assert( condition, description ) {
+                if ( !condition ) {
+                    throw 'Assertion failed: ' + description;
+                }
+            }
+            function copyBoard( board ) {
+                var ret = [];
+
+                for ( var i = 0; i < 3; ++i ) {
+                    ret[ i ] = [];
+                    for ( var j = 0; j < 3; ++j ) {
+                        ret[ i ][ j ] = board[ i ][ j ];
+                    }
+                }
+                return ret;
+            }
+            function transition( board, agent ) {
+                assert( board.length == 3, 'Transition board passed is incorrect' );
+                
+                var ret = [];
+                var newState;
+
+                // given a board, construct all possible boards resulting from all the moves we can make
+                for ( var i = 0; i < 3; ++i ) {
+                    for ( var j = 0; j < 3; ++j ) {
+                        if ( board[ i ][ j ] == 0 ) {
+                            newState = copyBoard( board );
+                            newState[ i ][ j ] = agent;
+                            ret.push( newState );
+                        }
+                    }
+                }
+
+                return ret;
+            }
+
+            // returns a score for the board:
+            // 0 if noone's winning;
+            // 1 if player 1 is winning;
+            // -1 if player -1 is winning
+            function score( board ) {
+                var rowScore = 0, columnScore = 0;
+
+                for ( var i = 0; i < 3; ++i ) {
+                    rowScore = checkRow( board, i );
+                    if ( rowScore != 0 ) {
+                        return rowScore;
+                    }
+                }
+                for ( var j = 0; j < 3; ++j ) {
+                    columnScore = checkColumn( board, j );
+                    if ( columnScore != 0 ) {
+                        return columnScore;
+                    }
+                }
+                return checkDiagonals( board );
+            }
+
+            // check if the board is at the end of the game
+            // i.e. either someone has won, or it's a draw
+            function leaf( board ) {
+                if ( score( board ) != 0 ) {
+                    return true;
+                }
+
+                for ( var i = 0; i < 3; ++i ) {
+                    for ( var j = 0; j < 3; ++j ) {
+                        if ( board[ i ][ j ] == 0 ) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+            // check if row i is a triplet
+            function checkRow( board, i ) {
+                if ( board[ i ][ 0 ] == board[ i ][ 1 ]
+                  && board[ i ][ 1 ] == board[ i ][ 2 ] 
+                  && board[ i ][ 0 ] != 0 ) {
+                    return board[ i ][ 0 ];
+                }
+                return 0;
+            }
+            // check if column i is a triplet
+            function checkColumn( board, j ) {
+                if ( board[ 0 ][ j ] == board[ 1 ][ j ]
+                  && board[ 1 ][ j ] == board[ 2 ][ j ]
+                  && board[ 0 ][ j ] != 0 ) {
+                    return board[ 0 ][ j ];
+                }
+                return 0;
+            }
+            // check if any of the two diagonals is a triplet
+            function checkDiagonals( board ) {
+                if ( board[ 0 ][ 0 ] == board[ 1 ][ 1 ]
+                  && board[ 1 ][ 1 ] == board[ 2 ][ 2 ] 
+                  && board[ 1 ][ 1 ] != 0 ) {
+                    return board[ 1 ][ 1 ];
+                }
+                if ( board[ 2 ][ 0 ] == board[ 1 ][ 1 ]
+                  && board[ 1 ][ 1 ] == board[ 0 ][ 2 ]
+                  && board[ 1 ][ 1 ] != 0 ) {
+                    return board[ 1 ][ 1 ];
+                }
+                return 0;
+            }
+            // called when it's the computer's turn to play or when it's the player's turn to play
+            function play() {
+                if ( leaf( board ) ) {
+                    switch ( score( board ) ) {
+                        case 0:
+                            message( 'It\'s a draw. Hit F5 for another game.' );
+                            break;
+                        case player:
+                            message( 'You win. Hit F5 to play again.' );
+                            break;
+                        case computer:
+                            message( 'Sorry, I won. Hit F5 to play again.' );
+                            break;
+                    }
+                    turn = computer;
+                    return;
+                }
+                if ( turn == computer ) {
+                    message( 'Hmmm...' );
+                    setTimeout( move, 200 );
+                }
+                else {
+                    // Player's turn
+                    message( 'Your turn.' );
+                }
+            }
+            // find what move to perform on the board
+            // board: the current state of the board
+            // agent: the player we want to play for (1 or -1)
+            // returns: configuration: the board after our move
+            //          value: the predicted outcome of the game given our move (1, -1 or 0)
+            function optimize( board, agent ) {
+                // this function is the whole AI
+                assert( board.length == 3, 'Optimize board incorrect' );
+                if ( leaf( board ) ) {
+                    return {
+                        configuration: board,
+                        value: score( board )
+                    };
+                }
+
+                var moves = transition( board, agent );
+                var optimalSubstructure = false;
+                var optimalConfiguration = false;
+                var configuration = false;
+                
+                if ( agent == -1 ) { // min
+                    var min = 2;
+                    for ( var i in moves ) {
+                        configuration = moves[ i ];
+                        optimalSubstructure = optimize( configuration, -agent );
+                        if ( optimalSubstructure.value < min ) {
+                            min = optimalSubstructure.value;
+                            optimalConfiguration = configuration;
+                        }
+                    }
+                    return {
+                        configuration: optimalConfiguration,
+                        value: min
+                    };
+                }
+                else if ( agent == 1 ) { // max
+                    var max = -2;
+                    for ( var i in moves ) {
+                        configuration = moves[ i ];
+                        optimalSubstructure = optimize( configuration, -agent );
+                        if ( optimalSubstructure.value > max ) {
+                            max = optimalSubstructure.value;
+                            optimalConfiguration = configuration;
+                        }
+                    }
+                    return {
+                        configuration: optimalConfiguration,
+                        value: max
+                    };
+                }
+            }
+            // find what move to perform and update the board accordingly
+            function move() {
+                var optimization = optimize( board, computer );
+                var configuration = optimization.configuration;
+                board = configuration;
+                console.log( 'Optimized with value = ' + optimization.value );
+                render();
+                turn = player;
+                play();
+            }
+            // find which cell the player clicked on
+            function hitTest( x, y ) {
+                return [ Math.floor( x / CELL_W ), Math.floor( y / CELL_H ) ];
+            }
+            // draw the board
+            function render() {
+                ctx.strokeStyle = 'black';
+                ctx.fillStyle = 'white';
+                function clear() {
+                    ctx.fillRect( 0, 0, W, H );
+                }
+                function line( from, to ) {
+                    ctx.beginPath();
+                    ctx.moveTo( from[ 0 ], from[ 1 ] );
+                    ctx.lineTo( to[ 0 ], to[ 1 ] );
+                    ctx.stroke();
+                }
+                function circle( center, radius ) {
+                    ctx.beginPath();
+                    ctx.arc( center[ 0 ], center[ 1 ], radius, 0, 2 * Math.PI, false );
+                    ctx.stroke();
+                }
+                function drawGrid() {
+                    for ( var x = CELL_W; x < 3 * CELL_W; x += CELL_W ) {
+                        line( [ x, 0 ], [ x, H ] );
+                    }
+                    for ( var y = CELL_H; y < 3 * CELL_H; y += CELL_H ) {
+                        line( [ 0, y ], [ W, y ] );
+                    }
+                }
+                function drawX( x, y ) {
+                    x *= CELL_W;
+                    y *= CELL_H;
+                    line( [ x + CELL_MARGIN_W, y + CELL_MARGIN_H ], [ x + CELL_W - CELL_MARGIN_W, y + CELL_H - CELL_MARGIN_H ] );
+                    line( [ x + CELL_MARGIN_W, y + CELL_H - CELL_MARGIN_H ], [ x + CELL_W - CELL_MARGIN_W, y + CELL_MARGIN_H ] );
+                }
+                function drawO( x, y ) {
+                    x *= CELL_W;
+                    y *= CELL_H;
+                    circle( [ x + CELL_W / 2, y + CELL_H / 2 ], CELL_W / 2 - ( CELL_MARGIN_W + CELL_MARGIN_H ) / 2 );
+                }
+                function drawXO() {
+                    for ( var y = 0; y < board.length; ++y ) {
+                        for (  var x = 0; x < board[ y ].length; ++x ) {
+                            switch ( board[ y ][ x ] ) {
+                                case 0:
+                                    break;
+                                case 1:
+                                    // X
+                                    drawX( x, y );
+                                    break;
+                                case -1:
+                                    // O
+                                    drawO( x, y );
+                                    break;
+                            }
+                        }
+                    }
+                }
+                clear();
+                drawGrid();
+                drawXO();
+            }
+            render();
+            // display a message to the user
+            function message( text ) {
+                out.innerHTML = text;
+            }
+            setTimeout( function() {
+                computer = Math.floor( Math.random() * 2 ) * 2 - 1;
+                player = -computer;
+                turn = Math.floor( Math.random() * 2 ) * 2 - 1;
+                if ( turn == player ) {
+                    if ( computer == 1 ) {
+                        message( "I'll play X's. Your move." );
+                    }
+                    else {
+                        message( "I'll play O's. Your move." );
+                    }
+                }
+                else {
+                    if ( computer == 1 ) {
+                        message( "I'll play X's. Hmmm..." );
+                    }
+                    else {
+                        message( "I'll play O's. Hmmm..." );
+                    }
+                    setTimeout( play, 300 );
+                }
+                $( 'h1' ).fadeIn( 'slow' );
+                $( 'canvas' ).fadeIn( 'slow' );
+            }, 100 );
+        </script>
+    </body>
+</html>
