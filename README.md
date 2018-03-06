@@ -4,6 +4,8 @@ by professors Sebastian Thrun and Peter Norvig.
 
 I hope the code is clear enough for anyone who is taking the class to understand.
 
+Play here at https://dionyziz.com/graphics/tictactoe/
+
 This small game is released under the MIT license:
 
 Copyright (C) 2011 Dionysis Zindros <dionyziz@gmail.com>
